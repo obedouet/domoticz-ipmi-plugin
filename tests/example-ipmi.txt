@@ -1,51 +1,18 @@
-CPU1 Temp        | 36 degrees C      | ok
-CPU2 Temp        | 35 degrees C      | ok
-PCH Temp         | 34 degrees C      | ok
-System Temp      | 40 degrees C      | ok
-Peripheral Temp  | 38 degrees C      | ok
-Vcpu1VRM Temp    | 48 degrees C      | ok
-Vcpu2VRM Temp    | 44 degrees C      | ok
-VmemABVRM Temp   | 42 degrees C      | ok
-VmemCDVRM Temp   | 36 degrees C      | ok
-VmemEFVRM Temp   | 37 degrees C      | ok
-VmemGHVRM Temp   | 42 degrees C      | ok
-P1-DIMMA1 Temp   | 42 degrees C      | ok
-P1-DIMMA2 Temp   | no reading        | ns
-P1-DIMMB1 Temp   | 39 degrees C      | ok
-P1-DIMMB2 Temp   | no reading        | ns
-P1-DIMMC1 Temp   | 33 degrees C      | ok
-P1-DIMMC2 Temp   | no reading        | ns
-P1-DIMMD1 Temp   | 36 degrees C      | ok
-P1-DIMMD2 Temp   | no reading        | ns
-P2-DIMME1 Temp   | 35 degrees C      | ok
-P2-DIMME2 Temp   | no reading        | ns
-P2-DIMMF1 Temp   | 36 degrees C      | ok
-P2-DIMMF2 Temp   | no reading        | ns
-P2-DIMMG1 Temp   | 37 degrees C      | ok
-P2-DIMMG2 Temp   | no reading        | ns
-P2-DIMMH1 Temp   | 36 degrees C      | ok
-P2-DIMMH2 Temp   | no reading        | ns
-FAN1             | 700 RPM           | nc
-FAN2             | 2300 RPM          | ok
-FAN3             | no reading        | ns
-FAN4             | no reading        | ns
-FAN5             | 700 RPM           | nc
-FAN6             | 2300 RPM          | ok
-FANA             | 2000 RPM          | ok
-FANB             | 1800 RPM          | ok
-12V              | 12,06 Volts       | ok
-5VCC             | 4,95 Volts        | ok
-3.3VCC           | 3,28 Volts        | ok
-VBAT             | 2,81 Volts        | ok
-Vcpu1            | 1,79 Volts        | ok
-Vcpu2            | 1,79 Volts        | ok
-VDIMMAB          | 1,19 Volts        | ok
-VDIMMCD          | 1,19 Volts        | ok
-VDIMMEF          | 1,19 Volts        | ok
-VDIMMGH          | 1,19 Volts        | ok
-5VSB             | 4,84 Volts        | ok
-3.3VSB           | 3,28 Volts        | ok
-1.5V PCH         | 1,49 Volts        | ok
-1.2V BMC         | 1,20 Volts        | ok
-1.05V PCH        | 1,04 Volts        | ok
-Chassis Intru    | 0x00              | ok
+ATX+5VSB         | 01h | ok  |  7.0 | 5,04 Volts
++3VSB            | 02h | ok  |  7.0 | 3,48 Volts
+Vcore            | 03h | ok  |  7.0 | 1,02 Volts
+VCCM             | 05h | ok  |  7.0 | 1,52 Volts
++1.1             | 07h | ok  |  7.0 | 1,08 Volts
++1.0             | 09h | ok  |  7.0 | 1,02 Volts
+BAT              | 0Bh | ok  |  7.0 | 2,76 Volts
++3V              | 0Ch | ok  |  7.0 | 3,36 Volts
++5V              | 0Dh | ok  |  7.0 | 5,13 Volts
++12V             | 0Eh | ok  |  7.0 | 11,90 Volts
+CPU_FAN1         | 0Fh | ns  |  7.0 | No Reading
+REAR_FAN1        | 11h | ok  |  7.0 | 1400 RPM
+FRNT_FAN1        | 13h | ns  |  7.0 | No Reading
+FRNT_FAN2        | 14h | ok  |  7.0 | 1400 RPM
+REAR_FAN2        | 15h | ns  |  7.0 | No Reading
+CPU_FAN2         | 17h | ok  |  7.0 | 1400 RPM
+MB Temperature   | 21h | ok  |  3.0 | 39 degrees C
+CPU Temperature  | 25h | ok  |  3.0 | 32 degrees C
