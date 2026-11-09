@@ -44,7 +44,7 @@ TYPE_MAP = {
 
 _NAME_RE = re.compile(r"[^A-Za-z0-9 _./-]+")
 # matches "45 degrees C", "1200 RPM", "12.100 Volts", "3.30 V", "24.5 deg C"
-_READ_RE = re.compile(r"^(-?\d+(?:\.\d+)?)\s*([A-Za-z° ]+)$")
+_READ_RE = re.compile(r"^(-?\d+(?:[.,]\d+)?)\s*([A-Za-z° ]+)$")
 
 _UNITS = {
     "C": "temp", "°C": "temp", "DEGREES C": "temp", "DEG C": "temp",
@@ -60,7 +60,8 @@ def sanitize(name):
     return _NAME_RE.sub("", str(name)).strip()[:64] or "sensor"
 
 def parse_reading(field):
-    """'45 degrees C' -> (45.0, 'temp'). Non-numeric/NA -> (None, None)."""
+    """'45 degrees C' -> (45.0, 'temp'). Comma decimals ('12,06 Volts')
+    are accepted too. Non-numeric/NA -> (None, None)."""
     f = " ".join(field.strip().split())
     if f.lower() in _NA:
         return None, None
@@ -72,22 +73,28 @@ def parse_reading(field):
     if kind is None:
         return None, None
     try:
-        return float(m.group(1)), kind
+        return float(m.group(1).replace(",", ".")), kind
     except ValueError:
         return None, None
 
 def parse_sdr(text):
-    """Yield (name, value, kind) from `ipmitool sdr elist` output."""
+    """Yield (name, value, kind) from `ipmitool sdr list`/`sdr elist` output.
+
+    `sdr list`  -> name | reading | status
+    `sdr elist` -> name | id | status | entity | reading
+    The reading column position differs between the two, so scan every
+    column after the name and take the first field that parses as a
+    numeric reading (status/id/entity columns never match)."""
     for line in text.splitlines():
         if "|" not in line:
             continue
         cols = [c.strip() for c in line.split("|")]
-        if len(cols) < 5:
+        if len(cols) < 2:
             continue
         name = sanitize(cols[0])
         if not name:
             continue
-        for field in cols[4:]:           # reading is the first numeric field
+        for field in cols[1:]:           # reading is the first parseable field
             value, kind = parse_reading(field)
             if value is not None:
                 yield name, value, kind
