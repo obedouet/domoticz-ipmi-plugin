@@ -113,7 +113,6 @@ class BasePlugin:
         self.data_lock = threading.Lock()
         self.units = {}            # sensor name -> unit number
         self.kinds = {}            # sensor name -> kind
-        self.last = {}             # sensor name -> last good value
         self.existing_names = {}
         return
 
@@ -232,9 +231,12 @@ class BasePlugin:
                 if unit not in Devices:
                     continue
                 svalue = str(round(value, 2))
-                if self.last.get(name) != value:
-                    Devices[unit].Update(nValue=0, sValue=svalue)
-                    self.last[name] = value
+                # Always push an Update so Domoticz refreshes the device's
+                # LastUpdate timestamp each cycle. Skipping unchanged values
+                # leaves stable sensors (constant voltage, slow temp) looking
+                # stale -- they only refresh when the reading finally changes.
+                # Domoticz still dedups identical consecutive history rows.
+                Devices[unit].Update(nValue=0, sValue=svalue)
 
     # ---- callbacks ----------------------------
     def onConnect(self, Status, Description):
