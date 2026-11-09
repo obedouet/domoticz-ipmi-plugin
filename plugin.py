@@ -24,15 +24,15 @@ import threading
 import time
 
 # Domoticz device types
-T_TEMP  = (80, 5)     # Type=80 (Temp)
-T_VOLT  = (243, 31)   # Custom, "0;V"   (243/9 is the native Voltage variant if preferred)
-T_FAN   = (243, 31)   # Custom, "0;RPM" (Domoticz has no native RPM type)
+T_TEMP  = (80, 5)     # Temp
+T_VOLT  = (243, 8)    # General / Voltage
+T_FAN   = (243, 7)    # General / Fan
 
 # what each accepted kind needs to build/update a device
 KINDS = {
-    "temp": {"types": T_TEMP,  "custom": "0;°C",  "label": "Temp"},
-    "volt": {"types": T_VOLT,  "custom": "0;V",   "label": "Volt"},
-    "fan":  {"types": T_FAN,   "custom": "0;RPM", "label": "Fan"},
+    "temp": {"types": T_TEMP, "label": "Temp", "fallback_custom": "1;C"},
+    "volt": {"types": T_VOLT, "label": "Volt", "fallback_custom": "1;V"},
+    "fan":  {"types": T_FAN,  "label": "Fan",  "fallback_custom": "1;RPM"},
 }
 
 # sensor 'type' strings reported by pyghmi -> kind
@@ -113,7 +113,8 @@ class BasePlugin:
         self.data_lock = threading.Lock()
         self.units = {}            # sensor name -> unit number
         self.kinds = {}            # sensor name -> kind
-        self.existing_names = {}
+        self.custom_units = set()  # units intentionally using custom fallback
+        self.retype_failed = {}    # unit -> kind, after a failed type conversion
         return
 
     # ---- unit allocation: reuse existing devices by name ----------------
@@ -124,25 +125,195 @@ class BasePlugin:
             u += 1
         return u
 
+    def _dev_subtype(self, dev):
+        return getattr(dev, "SubType", getattr(dev, "Subtype", None))
+
+    def _exact_name_match(self, dev, name):
+        return (getattr(dev, "Name", "") or "").strip() == name
+
+    def _suffix_name_match(self, dev, name):
+        dev_name = (getattr(dev, "Name", "") or "").strip()
+        return dev_name.endswith(" " + name) or dev_name.endswith(name)
+
+    def _types_match(self, dev, kind):
+        dtype, dsub = KINDS[kind]["types"]
+        return getattr(dev, "Type", None) == dtype and self._dev_subtype(dev) == dsub
+
+    def _is_fallback_custom(self, dev):
+        return getattr(dev, "Type", None) == 243 and self._dev_subtype(dev) == 31
+
+    def _options_custom(self, dev):
+        options = getattr(dev, "Options", None)
+        if isinstance(options, dict):
+            return str(options.get("Custom", "")).strip()
+        if hasattr(options, "get"):
+            try:
+                return str(options.get("Custom", "")).strip()
+            except Exception:
+                pass
+        return ""
+
+    def _is_matching_unit(self, unit, dev, kind):
+        if self._types_match(dev, kind):
+            return True
+        if self._is_fallback_custom(dev):
+            if unit in self.custom_units:
+                return True
+            return self._options_custom(dev) == KINDS[kind]["fallback_custom"]
+        return False
+
+    def _find_existing_unit(self, name, kind):
+        fallback = None
+        suffix_fallback = None
+
+        for unit, dev in Devices.items():
+            if self._exact_name_match(dev, name):
+                if self._is_matching_unit(unit, dev, kind):
+                    return unit
+                if fallback is None:
+                    fallback = unit
+            elif self._suffix_name_match(dev, name):
+                if self._is_matching_unit(unit, dev, kind):
+                    return unit
+                if suffix_fallback is None:
+                    suffix_fallback = unit
+
+        return fallback or suffix_fallback
+
+    def _create_device(self, unit, name, kind):
+        dtype, dsub = KINDS[kind]["types"]
+        Domoticz.Device(
+            Name=name, Unit=unit, Type=dtype, Subtype=dsub, Used=1,
+        ).Create()
+
+        dev = Devices.get(unit)
+        if dev is not None and self._types_match(dev, kind):
+            return True
+
+        Domoticz.Log("Native %s type unavailable for '%s'; using custom sensor"
+                     % (KINDS[kind]["label"], name))
+        Domoticz.Device(
+            Name=name, Unit=unit, Type=243, Subtype=31,
+            Options={"Custom": KINDS[kind]["fallback_custom"]},
+            Used=1,
+        ).Create()
+
+        dev = Devices.get(unit)
+        if dev is not None and self._is_fallback_custom(dev):
+            self.custom_units.add(unit)
+            return True
+        return False
+
+    def _normalize_device(self, unit, kind):
+        dev = Devices.get(unit)
+        if dev is None or self._is_matching_unit(unit, dev, kind):
+            return
+
+        if self.retype_failed.get(unit) == kind:
+            return
+
+        dtype, dsub = KINDS[kind]["types"]
+        nvalue = getattr(dev, "nValue", 0)
+        svalue = getattr(dev, "sValue", "")
+
+        try:
+            try:
+                dev.Update(
+                    nValue=nvalue,
+                    sValue=svalue,
+                    Type=dtype,
+                    Subtype=dsub,
+                    Options={},
+                    Used=1,
+                )
+            except TypeError:
+                dev.Update(
+                    nValue=nvalue,
+                    sValue=svalue,
+                    Type=dtype,
+                    Subtype=dsub,
+                    Used=1,
+                )
+            if self._types_match(dev, kind):
+                Domoticz.Log("Retyped existing device '%s' (unit %d) as %s"
+                             % (getattr(dev, "Name", ""), unit, KINDS[kind]["label"]))
+                return
+        except Exception as e:
+            Domoticz.Error("Could not retype device unit %d: %s" % (unit, e))
+
+        try:
+            try:
+                dev.Update(
+                    nValue=nvalue,
+                    sValue=svalue,
+                    Type=243,
+                    Subtype=31,
+                    Options={"Custom": KINDS[kind]["fallback_custom"]},
+                    Used=1,
+                )
+            except TypeError:
+                dev.Update(
+                    nValue=nvalue,
+                    sValue=svalue,
+                    Type=243,
+                    Subtype=31,
+                    Used=1,
+                )
+            if self._is_fallback_custom(dev):
+                self.custom_units.add(unit)
+                Domoticz.Log("Converted existing device '%s' (unit %d) to custom %s"
+                             % (getattr(dev, "Name", ""), unit, KINDS[kind]["label"]))
+                return
+        except Exception as e:
+            Domoticz.Error("Could not convert device unit %d to custom sensor: %s"
+                           % (unit, e))
+
+        self.retype_failed[unit] = kind
+        Domoticz.Error("Could not change device unit %d to a supported type; leaving it unchanged" % unit)
+
     def _ensure_device(self, name, kind):
-        # Already tracked for this session.
-        if name in self.units:
-            return self.units[name]
-        # Reuse a Domoticz device from a previous run (survives restarts
-        # even if SDR discovery order changes).
-        unit = self.existing_names.get(name)
+        unit = self.units.get(name)
+        if unit is not None and unit in Devices:
+            return unit
+
+        if unit is not None:
+            del self.units[name]
+
+        unit = self._find_existing_unit(name, kind)
         if unit is None:
             unit = self._free_unit()
-            dtype, dsub = KINDS[kind]["types"]
-            Domoticz.Device(
-                Name=name, Unit=unit, Type=dtype, Subtype=dsub,
-                Options={"Custom": KINDS[kind]["custom"]},
-            ).Create()
+            if not self._create_device(unit, name, kind):
+                Domoticz.Error("Could not create device '%s'" % name)
+                return None
             Domoticz.Log("Created %s device '%s' (unit %d)"
                          % (KINDS[kind]["label"], name, unit))
+        else:
+            self._normalize_device(unit, kind)
+
         self.units[name] = unit
         self.kinds[name] = kind
         return unit
+
+    def _update_device(self, unit, kind, svalue):
+        if unit not in Devices:
+            return
+
+        dev = Devices[unit]
+        if not self._is_matching_unit(unit, dev, kind):
+            self._normalize_device(unit, kind)
+            dev = Devices.get(unit)
+            if dev is None:
+                return
+
+        try:
+            try:
+                dev.Update(nValue=0, sValue=svalue, TimedOut=0, Used=1)
+            except TypeError:
+                dev.Update(nValue=0, sValue=svalue)
+            if hasattr(dev, "Touch"):
+                dev.Touch()
+        except Exception as e:
+            Domoticz.Error("Update failed for unit %d: %s" % (unit, e))
 
     # ---- lifecycle ------------------------------------------------------
     def onStart(self):
@@ -163,10 +334,6 @@ class BasePlugin:
         if not self.host or not self.user:
             Domoticz.Error("BMC host and user are required")
             return
-
-        # Map already-existing Domoticz devices back by name so units are
-        # stable across plugin restarts.
-        self.existing_names = {d.Name: u for u, d in Devices.items()}
 
         Domoticz.Log("Polling %s via ipmitool lanplus every %ds"
                      % (self.host, self.poll_interval))
@@ -228,15 +395,10 @@ class BasePlugin:
             seen.add(name)
             with self.data_lock:
                 unit = self._ensure_device(name, kind)
-                if unit not in Devices:
+                if unit is None or unit not in Devices:
                     continue
                 svalue = str(round(value, 2))
-                # Always push an Update so Domoticz refreshes the device's
-                # LastUpdate timestamp each cycle. Skipping unchanged values
-                # leaves stable sensors (constant voltage, slow temp) looking
-                # stale -- they only refresh when the reading finally changes.
-                # Domoticz still dedups identical consecutive history rows.
-                Devices[unit].Update(nValue=0, sValue=svalue)
+                self._update_device(unit, kind, svalue)
 
     # ---- callbacks ----------------------------
     def onConnect(self, Status, Description):

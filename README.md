@@ -97,12 +97,18 @@ device.
   `RPM/TACH → fan`, `V/Volts → voltage`. Anything else is skipped.
 - Device mapping:
   - Temperature → Domoticz `Type=80, Subtype=5` (native temp).
-  - Voltage → Custom `Type=243, Subtype=31` with `Custom=0;V`.
-  - Fan → Custom `Type=243, Subtype=31` with `Custom=0;RPM` (Domoticz has no
-    native RPM type; swap the Voltage entry to `Type=243, Subtype=9` if you
-    prefer Domoticz's built-in voltage display).
-- Devices are created lazily on first valid reading, under a lock, and only
-  updated when the value actually changes.
+  - Voltage → Domoticz `Type=243, Subtype=8` (native voltage), with a
+    custom-sensor fallback of `Type=243, Subtype=31` and `Custom=1;V`.
+  - Fan → Domoticz `Type=243, Subtype=7` (native fan), with a custom-sensor
+    fallback of `Type=243, Subtype=31` and `Custom=1;RPM`.
+- Devices are created lazily on first valid reading, under a lock, with
+  `Used=1`, and are updated every poll. Stable readings still get a `Touch()`
+  so Domoticz keeps the device's `LastUpdate` timestamp fresh even when the
+  value itself has not changed.
+- Existing devices are reused by sensor name and, when necessary, by the
+  hardware-prefixed display name suffix. Devices left from older plugin
+  versions are retyped to the current native type when Domoticz accepts that
+  type; otherwise they are converted to the custom-sensor fallback.
 
 ## Troubleshooting
 
